@@ -44,10 +44,35 @@
 
 # COMMAND ----------
 
-dbutils.notebook.run("./04-Lab-Runnable", 60, 
-  {"n_estimators": "100",
+step1 = dbutils.notebook.run("/Repos/adettor@u.rochester.edu/dscc202-402-spring2022/project3-mlops/Multistep/Step-1-Read-Data", 60, 
+  {"data_input_path": "/dbfs/mnt/training/airbnb/sf-listings/airbnb-cleaned-mlflow.csv"})
+
+print(step1)
+
+# COMMAND ----------
+
+import json
+tmp = json.loads(step1)
+run_id = tmp.get("run_id")
+path = tmp.get("path")
+print(run_id, path)
+
+# COMMAND ----------
+
+step2 = dbutils.notebook.run("./04-Lab-Runnable", 60, 
+  {"run_id": run_id,
+   "path": path,
+   "n_estimators": "100",
    "learning_rate": ".1",
    "max_depth": "1"})
+
+print(step2)
+
+# COMMAND ----------
+
+model_output_path = json.loads(step2).get("model_output_path")
+data_path = json.loads(step2).get("data_path")
+print(model_output_path,data_path)
 
 # COMMAND ----------
 

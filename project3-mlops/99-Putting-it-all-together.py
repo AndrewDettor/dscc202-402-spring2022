@@ -8,10 +8,10 @@
 # MAGIC 
 # MAGIC In this course, we've primarily used Random Forest in `sklearn` to model the Airbnb dataset.  In this exercise, perform the following tasks:
 # MAGIC <br><br>
-# MAGIC 0. Create custom pre-processing logic to featurize the data
-# MAGIC 0. Try a number of different algorithms and hyperparameters.  Choose the most performant solution
-# MAGIC 0. Create related post-processing logic
-# MAGIC 0. Package the results and execute it as its own run
+# MAGIC 1. Create custom pre-processing logic to featurize the data
+# MAGIC 2. Try a number of different algorithms and hyperparameters.  Choose the most performant solution
+# MAGIC 3. Create related post-processing logic
+# MAGIC 4. Package the results and execute it as its own run
 # MAGIC 
 # MAGIC ## Prerequisites
 # MAGIC - Web browser: Chrome
@@ -65,7 +65,19 @@ display(airbnbDF)
 
 # COMMAND ----------
 
-# TODO
+for index, value in airbnbDF["price"].iteritems():
+    new_value = value.replace("$", "")
+    newer_value = new_value.replace(",", "")
+    
+    airbnbDF["price"][index] = newer_value
+
+# COMMAND ----------
+
+airbnbDF["price"] = airbnbDF["price"].astype("float")
+
+# COMMAND ----------
+
+airbnbDF["price"].dtypes
 
 # COMMAND ----------
 
@@ -76,7 +88,21 @@ display(airbnbDF)
 
 # COMMAND ----------
 
-# TODO
+numerical_cols = [col for col in airbnbDF if airbnbDF[col].dtypes == "float64"]
+print(numerical_cols)
+
+# COMMAND ----------
+
+airbnbDF[numerical_cols].isna().any()
+
+# COMMAND ----------
+
+numerical_no_nan_cols = [col for col in numerical_cols if not airbnbDF[col].isna().any()]
+print(numerical_no_nan_cols)
+
+# COMMAND ----------
+
+airbnbDF[numerical_no_nan_cols].isna().any()
 
 # COMMAND ----------
 
@@ -86,7 +112,7 @@ display(airbnbDF)
 
 # COMMAND ----------
 
-# TODO
+# I decided not to keep any string columns
 
 # COMMAND ----------
 
@@ -97,9 +123,18 @@ display(airbnbDF)
 
 # COMMAND ----------
 
+X = airbnbDF[numerical_no_nan_cols].drop("price", axis=1)
+y = airbnbDF["price"]
+
+# COMMAND ----------
+
+print(X.columns)
+
+# COMMAND ----------
+
 # TODO
 from sklearn.model_selection import train_test_split
-
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.7, random_state=1)
 
 # COMMAND ----------
 
@@ -118,7 +153,9 @@ from sklearn.model_selection import train_test_split
 
 # COMMAND ----------
 
-# TODO
+from sklearn.linear_model import Lasso
+
+lasso = Lasso().fit(X_train, y_train)
 
 # COMMAND ----------
 
@@ -127,7 +164,7 @@ from sklearn.model_selection import train_test_split
 
 # COMMAND ----------
 
-# TODO
+from sklearn.metrics import mean_absolute_error
 
 # COMMAND ----------
 
@@ -137,9 +174,32 @@ from sklearn.model_selection import train_test_split
 
 # COMMAND ----------
 
-# TODO
 import mlflow.sklearn
 
+with mlflow.start_run(run_name="adettor Notebook 99 Linear Regression") as run:
+    # Fit the model
+    lasso = Lasso(alpha=.3).fit(X_train, y_train)
+    
+    # Create predictions
+    predictions = lasso.predict(X_test)
+
+    # Log model
+    mlflow.sklearn.log_model(LR, "lasso-regression-model")
+
+    # Create metrics
+    mae = mean_absolute_error(y_test, predictions)
+    print(f"mae: {mae}")
+
+    # Log metrics
+    mlflow.log_metric("mae", mae)
+    
+    # Log params
+    mlflow.log_param("alpha", .3)
+
+    runID = run.info.run_uuid
+    experimentID = run.info.experiment_id
+
+    print(f"Inside MLflow Run with run_id `{runID}` and experiment_id `{experimentID}`")
 
 # COMMAND ----------
 
@@ -157,6 +217,12 @@ import mlflow.sklearn
 
 # TODO
 import mlflow.pyfunc
+lasso_logged_model = f'runs:/{runID}/lasso-regression-model'
+
+# Load model as a PyFuncModel.
+lasso_loaded_model = mlflow.pyfunc.load_model(lasso_logged_model)
+
+type(lasso_loaded_model)
 
 # COMMAND ----------
 
@@ -174,6 +240,10 @@ import mlflow.pyfunc
 
 # COMMAND ----------
 
+X_test.columns
+
+# COMMAND ----------
+
 # TODO
 
 class Airbnb_Model(mlflow.pyfunc.PythonModel):
@@ -182,7 +252,9 @@ class Airbnb_Model(mlflow.pyfunc.PythonModel):
         self.model = model
     
     def predict(self, context, model_input):
-        # FILL_IN
+        # Create predictions
+        predictions = self.model.predict(model_input)
+        return predictions/model_input["accommodates"].to_numpy()
 
 
 # COMMAND ----------
@@ -193,9 +265,13 @@ class Airbnb_Model(mlflow.pyfunc.PythonModel):
 # COMMAND ----------
 
 # TODO
-final_model_path =  f"{working_path}/final-model"
+final_model_path =  f"{working_path}/final-model3"
 
-# FILL_IN
+mlflow.pyfunc.save_model(path=final_model_path.replace("dbfs:", "/dbfs"), python_model=Airbnb_Model(lasso_loaded_model))
+
+# COMMAND ----------
+
+# dbutils.fs.rm(final_model_path, True) # Allows you to rerun the code multiple times
 
 # COMMAND ----------
 
@@ -204,7 +280,27 @@ final_model_path =  f"{working_path}/final-model"
 
 # COMMAND ----------
 
-# TODO
+# LR
+predictions
+
+# COMMAND ----------
+
+# Airbnb_Model
+Airbnb_loaded_model = mlflow.pyfunc.load_model(final_model_path)
+type(Airbnb_loaded_model)
+
+# COMMAND ----------
+
+predictions2 = Airbnb_loaded_model.predict(X_test)
+predictions2
+
+# COMMAND ----------
+
+X_test["accommodates"].to_numpy()
+
+# COMMAND ----------
+
+predictions/X_test["accommodates"].to_numpy()
 
 # COMMAND ----------
 
@@ -223,11 +319,12 @@ final_model_path =  f"{working_path}/final-model"
 # COMMAND ----------
 
 # TODO
-save the testing data 
+# save the testing data 
 test_data_path = f"{working_path}/test_data.csv"
-# FILL_IN
+X_test.to_csv(test_data_path, index=False)
 
 prediction_path = f"{working_path}/predictions.csv"
+pd.DataFrame(predictions2).to_csv(prediction_path, index=False)
 
 # COMMAND ----------
 
@@ -238,18 +335,28 @@ prediction_path = f"{working_path}/predictions.csv"
 
 # COMMAND ----------
 
+(final_model_path, test_data_path, prediction_path)
+
+# COMMAND ----------
+
 # TODO
 import click
 import mlflow.pyfunc
 import pandas as pd
 
 @click.command()
-@click.option("--final_model_path", default="", type=str)
-@click.option("--test_data_path", default="", type=str)
-@click.option("--prediction_path", default="", type=str)
+@click.option("--final_model_path", default='/dbfs/user/adettor@u.rochester.edu/mlflow/99_putting_it_all_together_psp/final-model2', type=str)
+@click.option("--test_data_path", default='/dbfs/user/adettor@u.rochester.edu/mlflow/99_putting_it_all_together_psp/test_data.csv', type=str)
+@click.option("--prediction_path", default='/dbfs/user/adettor@u.rochester.edu/mlflow/99_putting_it_all_together_psp/predictions.csv', type=str)
 def model_predict(final_model_path, test_data_path, prediction_path):
-    # FILL_IN
+#     with mlflow.start_run() as run:
+    # Import the data
+    X_test = pd.read_csv(test_data_path)
 
+    # Load model and create predictions
+    Airbnb_loaded_model = mlflow.pyfunc.load_model(final_model_path)
+    predictions = Airbnb_loaded_model.predict(X_test)
+    pd.DataFrame(predictions).to_csv(prediction_path, index=False)
 
 # test model_predict function    
 demo_prediction_path = f"{working_path}/predictions.csv"
@@ -267,7 +374,16 @@ print(pd.read_csv(demo_prediction_path))
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC for some reason it kept the accommodates name for the column
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC Next, we will create a MLproject file and put it under our `workingDir`. Complete the parameters and command of the file.
+
+# COMMAND ----------
+
+final_model_path, test_data_path, prediction_path
 
 # COMMAND ----------
 
@@ -281,13 +397,11 @@ conda_env: conda.yaml
 entry_points:
   main:
     parameters:
-      #FILL_IN
-    command:  "python predict.py #FILL_IN"
+      final_model_path: {type: str, default: '/dbfs/user/adettor@u.rochester.edu/mlflow/99_putting_it_all_together_psp/final-model2'}
+      test_data_path: {type: str, default: '/dbfs/user/adettor@u.rochester.edu/mlflow/99_putting_it_all_together_psp/test_data.csv'}
+      prediction_path: {type: str, default: '/dbfs/user/adettor@u.rochester.edu/mlflow/99_putting_it_all_together_psp/predictions.csv'}
+    command:  "python predict.py --final_model_path {final_model_path} --test_data_path {test_data_path} --prediction_path {prediction_path}"
 '''.strip(), overwrite=True)
-
-# COMMAND ----------
-
-print(prediction_path)
 
 # COMMAND ----------
 
@@ -295,6 +409,10 @@ print(prediction_path)
 # MAGIC We then create a `conda.yaml` file to list the dependencies needed to run our script.
 # MAGIC 
 # MAGIC For simplicity, we will ensure we use the same version as we are running in this notebook.
+
+# COMMAND ----------
+
+#   - python={version.major}.{version.minor}.{version.micro}
 
 # COMMAND ----------
 
@@ -307,7 +425,6 @@ name: Capstone
 channels:
   - defaults
 dependencies:
-  - python={version.major}.{version.minor}.{version.micro}
   - cloudpickle={cloudpickle.__version__}
   - numpy={numpy.__version__}
   - pandas={pandas.__version__}
@@ -336,7 +453,19 @@ import click
 import mlflow.pyfunc
 import pandas as pd
 
-# put model_predict function with decorators here
+@click.command()
+@click.option("--final_model_path", default='/dbfs/user/adettor@u.rochester.edu/mlflow/99_putting_it_all_together_psp/final-model2', type=str)
+@click.option("--test_data_path", default='/dbfs/user/adettor@u.rochester.edu/mlflow/99_putting_it_all_together_psp/test_data.csv', type=str)
+@click.option("--prediction_path", default='/dbfs/user/adettor@u.rochester.edu/mlflow/99_putting_it_all_together_psp/predictions.csv', type=str)
+def model_predict(final_model_path, test_data_path, prediction_path):
+#     with mlflow.start_run() as run:
+    # Import the data
+    X_test = pd.read_csv(test_data_path)
+
+    # Load model and create predictions
+    Airbnb_loaded_model = mlflow.pyfunc.load_model(final_model_path)
+    predictions = Airbnb_loaded_model.predict(X_test)
+    pd.DataFrame(predictions).to_csv(prediction_path, index=False)
     
 if __name__ == "__main__":
   model_predict()
@@ -367,8 +496,11 @@ display( dbutils.fs.ls(workingDir) )
 # TODO
 second_prediction_path = f"{working_path}/predictions-2.csv"
 mlflow.projects.run(working_path,
-   # FILL_IN
-)
+   parameters={
+      "final_model_path": final_model_path,
+      "test_data_path": test_data_path,
+      "prediction_path": second_prediction_path
+})
 
 # COMMAND ----------
 

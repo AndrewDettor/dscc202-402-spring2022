@@ -94,17 +94,18 @@ rf2 = RandomForestRegressor(n_estimators=100, max_depth=25)
 
 # pre-process train data
 X_train_processed = X_train.copy()
-X_train_processed["trunc_lat"] = #FILL_IN
-X_train_processed["trunc_long"] = #FILL_IN
-X_train_processed["review_scores_sum"] = #FILL_IN
-X_train_processed = X_train_processed.drop(FILL_IN, axis=1)
+X_train_processed["trunc_lat"] = round(X_train["latitude"], 2)
+X_train_processed["trunc_long"] = round(X_train["longitude"], 2)
+X_train_processed["review_scores_sum"] = X_train[['review_scores_accuracy', 'review_scores_cleanliness', 'review_scores_checkin', 'review_scores_communication', 'review_scores_location', 'review_scores_value']].sum(axis=1)
+                                                       
+X_train_processed = X_train_processed.drop(columns=['latitude', 'longitude', 'review_scores_accuracy', 'review_scores_cleanliness', 'review_scores_checkin', 'review_scores_communication', 'review_scores_location', 'review_scores_value'])
 
 # pre-process test data to obtain MSE
 X_test_processed = X_test.copy()
-X_test_processed["trunc_lat"] = #FILL_IN
-X_test_processed["trunc_long"] = #FILL_IN
-X_test_processed["review_scores_sum"] = #FILL_IN
-X_test_processed = X_test_processed.drop(FILL_IN, axis=1)
+X_test_processed["trunc_lat"] = round(X_test["latitude"], 2)
+X_test_processed["trunc_long"] = round(X_test["longitude"], 2)
+X_test_processed["review_scores_sum"] = X_test[['review_scores_accuracy', 'review_scores_cleanliness', 'review_scores_checkin', 'review_scores_communication', 'review_scores_location', 'review_scores_value']].sum(axis=1)
+X_test_processed = X_test_processed.drop(columns=['latitude', 'longitude', 'review_scores_accuracy', 'review_scores_cleanliness', 'review_scores_checkin', 'review_scores_communication', 'review_scores_location', 'review_scores_value'])
 
 
 # fit and evaluate new rf model
@@ -123,11 +124,29 @@ rf2_mse
 import mlflow.sklearn
 
 with mlflow.start_run(run_name="RF Model Pre-process") as run: 
-  mlflow.sklearn.log_model(rf2, "random-forest-model-preprocess")
-  mlflow.log_metric("mse", rf2_mse)
-  
-  experimentID = run.info.experiment_id
-  artifactURI = mlflow.get_artifact_uri()
+    mlflow.sklearn.log_model(rf2, "random-forest-model-preprocess")
+    mlflow.log_metric("mse", rf2_mse)
+    
+    sklearnRunID = run.info.run_uuid
+    experimentID = run.info.experiment_id
+    artifactURI = mlflow.get_artifact_uri()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC dbfs:/databricks/mlflow-tracking/509953321691685/6ededc1646b04d01b487c82ca58685ea/artifacts/random-forest-model-preprocess
+
+# COMMAND ----------
+
+sklearnRunID
+
+# COMMAND ----------
+
+experimentID
+
+# COMMAND ----------
+
+artifactURI
 
 # COMMAND ----------
 
@@ -143,7 +162,7 @@ client = MlflowClient()
 rf2_run = sorted(client.list_run_infos(experimentID), key=lambda r: r.start_time, reverse=True)[0]
 rf2_path = rf2_run.artifact_uri+"/random-forest-model-preprocess/"
 
-rf2_pyfunc_model = mlflow.pyfunc.load_pyfunc(rf2_path.replace("dbfs:", "/dbfs"))
+rf2_pyfunc_model = mlflow.pyfunc.load_model(rf2_path.replace("dbfs:", "/dbfs"))
 
 # COMMAND ----------
 
@@ -160,7 +179,7 @@ except ValueError as e:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Why did this fail?
+# MAGIC Why did this fail? Outdated MLflow client: Artifacts stored in 'dbfs:/databricks/mlflow-tracking' can only be accessed using MLflow client version 1.9.1 or later. Please update your MLflow client and try again.
 
 # COMMAND ----------
 
@@ -186,8 +205,11 @@ class RF_with_preprocess(mlflow.pyfunc.PythonModel):
 
     def preprocess_input(self, model_input):
         '''return pre-processed model_input'''
-        # FILL_IN
-        return
+        model_input["trunc_lat"] = round(model_input["latitude"], 2)
+        model_input["trunc_long"] = round(model_input["longitude"], 2)
+        model_input["review_scores_sum"] = model_input[['review_scores_accuracy', 'review_scores_cleanliness', 'review_scores_checkin', 'review_scores_communication', 'review_scores_location', 'review_scores_value']].sum(axis=1)
+        model_input = model_input.drop(columns=['latitude', 'longitude', 'review_scores_accuracy', 'review_scores_cleanliness', 'review_scores_checkin', 'review_scores_communication', 'review_scores_location', 'review_scores_value'])
+        return model_input
     
     def predict(self, context, model_input):
         processed_model_input = self.preprocess_input(model_input.copy())
@@ -200,7 +222,12 @@ class RF_with_preprocess(mlflow.pyfunc.PythonModel):
 
 # COMMAND ----------
 
-# Construct and save the model
+model_path =  f"{workingDir}/RF_with_preprocess/"
+# dbutils.fs.ls(model_path) # remove folder if already exists
+dbutils.fs.rm(model_path, True)
+
+# COMMAND ----------
+
 model_path =  f"{workingDir}/RF_with_preprocess/"
 dbutils.fs.rm(model_path, True) # remove folder if already exists
 
@@ -240,15 +267,18 @@ class RF_with_postprocess(mlflow.pyfunc.PythonModel):
 
     def preprocess_input(self, model_input):
         '''return pre-processed model_input'''
-        # FILL_IN
+        model_input["trunc_lat"] = round(model_input["latitude"], 2)
+        model_input["trunc_long"] = round(model_input["longitude"], 2)
+        model_input["review_scores_sum"] = model_input[['review_scores_accuracy', 'review_scores_cleanliness', 'review_scores_checkin', 'review_scores_communication', 'review_scores_location', 'review_scores_value']].sum(axis=1)
+        model_input = model_input.drop(columns=['latitude', 'longitude', 'review_scores_accuracy', 'review_scores_cleanliness', 'review_scores_checkin', 'review_scores_communication', 'review_scores_location', 'review_scores_value'])
+        return model_input
         return 
       
     def postprocess_result(self, results):
         '''return post-processed results
         Expensive: predicted price > 100
         Not Expensive: predicted price <= 100'''
-        # FILL_IN
-        return 
+        return ["Expensive" if x>100 else "Not Expensive" for x in results]
     
     def predict(self, context, model_input):
         processed_model_input = self.preprocess_input(model_input.copy())
@@ -290,7 +320,7 @@ loaded_postprocess_model.predict(X_test)
 
 # COMMAND ----------
 
-# MAGIC %run "../Includes/Classroom-Cleanup"
+# MAGIC %run "../Includes/Classroom-Cleanup" 
 
 # COMMAND ----------
 
